@@ -30,6 +30,7 @@ app.use((req, res, next) => {
   next();
 });
 
+app.get('/', (req, res) => res.send("API Working"))
 
 // Routes
 app.use('/api/paypal', paymentRoutes);
