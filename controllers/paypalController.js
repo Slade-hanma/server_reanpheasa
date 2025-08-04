@@ -1,79 +1,149 @@
-const paypal = require('paypal-rest-sdk');
+require('dotenv').config();
 
-// Configure PayPal SDK
-paypal.configure({
-  mode: 'sandbox', // or 'live'
-  client_id: process.env.PAYPAL_CLIENT_ID,
-  client_secret: process.env.PAYPAL_CLIENT_SECRET,
-});
+const axios= require('axios')
 
-exports.renderHome = (req, res) => {
-  res.render('index', { amount: 9.99 });
-};
+async function generateAccessToken(){
+    const response = await axios({
+        url: process.env.PAYPAL_BASE_URL + '/v1/oauth2/token',
+        method: 'POST',
+        data: 'grant_type=client_credentials',
 
-exports.createPayment = (req, res) => {
-  const paymentJson = {
-    intent: 'sale',
-    payer: {
-      payment_method: 'paypal'
-    },
-    redirect_urls: {
-      return_url: 'http://localhost:5000/success',
-      cancel_url: 'http://localhost:5000/cancel'
-    },
-    transactions: [{
-      item_list: {
-        items: [{
-          name: 'Online Course',
-          sku: '001',
-          price: '9.99',
-          currency: 'USD',
-          quantity: 1
-        }]
-      },
-      amount: {
-        currency: 'USD',
-        total: '9.99'
-      },
-      description: 'Purchase of online course.'
-    }]
-  };
+        auth: {
+            username: process.env.PAYPAL_CLIENT_ID,
+            password: process.env.PAYPAL_SECRET
+        },
+    })
+    // console.log(response.data)
+    return response.data.access_token
+}
 
-  paypal.payment.create(paymentJson, (err, payment) => {
-    if (err) {
-      console.error(err);
-      res.send('Error creating payment');
-    } else {
-      const approvalUrl = payment.links.find(link => link.rel === 'approval_url').href;
-      res.redirect(approvalUrl);
+
+function calculateTotal(items) {
+  return items.reduce((sum, item) => {
+    const quantity = Number(item.quantity);
+    const unitValue = parseFloat(item.unit_amount.value);
+    return sum + (quantity * unitValue);
+  }, 0).toFixed(2);
+}
+
+createOrder = async (req, res) => {
+  try {
+    console.log('Received body:', req.body);
+
+    const { items } = req.body;
+    const courseId = items[0].courseId; 
+    console.log('Course ID from body:', courseId);
+
+    if (!items || !Array.isArray(items)) {
+      return res.status(400).json({ error: 'Items array is required.' });
     }
-  });
-};
 
-exports.success = (req, res) => {
-  const payerId = req.query.PayerID;
-  const paymentId = req.query.paymentId;
+    console.log('Generating PayPal token...');
+    const accessToken = await generateAccessToken();
+    console.log('Access token:', accessToken);
 
-  const executePaymentJson = {
-    payer_id: payerId,
-    transactions: [{
-      amount: {
-        currency: 'USD',
-        total: '9.99'
+    const order = {
+      intent: 'CAPTURE',
+      purchase_units: [
+        {
+          items: items,
+          amount: {
+            currency_code: 'USD',
+            value: calculateTotal(items),
+            breakdown: {
+              item_total: {
+                currency_code: 'USD',
+                value: calculateTotal(items)
+              }
+            }
+          }
+        }
+      ],
+      application_context: {
+          return_url: `http://localhost:5173/course-detail/${courseId}?status=success`,
+          cancel_url: `http://localhost:5173/course-detail/${courseId}?status=cancelled`
       }
-    }]
-  };
+    };
 
-  paypal.payment.execute(paymentId, executePaymentJson, (err, payment) => {
-    if (err) {
-      console.error(err.response);
-      return res.send('Payment failed');
-    } else {
-      res.render('success', { payment });
-    }
-  });
+    const response = await axios.post(`${process.env.PAYPAL_BASE_URL}/v2/checkout/orders`, order, {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`
+      }
+    });
+
+    console.log('PayPal order response:', response.data);
+    res.status(201).json(response.data);
+
+  } catch (error) {
+    console.error('🔴 PayPal Order Error:', error.response?.data || error.message || error);
+    res.status(500).json({ error: 'Something went wrong', details: error.response?.data || error.message });
+  }
 };
 
-exports.cancel = (req, res) => {
-  res.send('Payment was cancelled');
+
+capturePayment = async(orderId) => {
+    const accessToken= await generateAccessToken()
+    const response = await axios({
+        url: process.env.PAYPAL_BASE_URL + '/v2/checkout/orders/' + orderId + '/capture',
+        method: 'POST',
+        headers: {
+            'Content-type': 'application/json',
+            'Authorization': 'Bearer ' + accessToken
+        },
+    })
+    return response.data
+}
+
+module.exports = {
+  createOrder,
+  capturePayment,
 };
+
+
+
+
+
+// async function createOrder(items) {
+//   if (!items || !Array.isArray(items)) {
+//     throw new Error('Items array is required.');
+//   }
+
+//   const accessToken = await generateAccessToken();
+
+//   const order = {
+//     intent: 'CAPTURE',
+//     purchase_units: [
+//       {
+//         items: items,
+//         amount: {
+//           currency_code: 'USD',
+//           value: calculateTotal(items),
+//           breakdown: {
+//             item_total: {
+//               currency_code: 'USD',
+//               value: calculateTotal(items),
+//             },
+//           },
+//         },
+//       },
+//     ],
+//     application_context: {
+//       return_url: 'http://localhost:3000/complete-order',
+//       cancel_url: process.env.BASE_URL + '/cancel-order',
+//     },
+//   };
+
+//   const response = await axios.post(
+//     `${process.env.PAYPAL_BASE_URL}/v2/checkout/orders`,
+//     order,
+//     {
+//       headers: {
+//         'Content-Type': 'application/json',
+//         Authorization: `Bearer ${accessToken}`,
+//       },
+//     }
+//   );
+
+//   return response.data;
+// }

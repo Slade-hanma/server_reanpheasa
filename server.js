@@ -31,12 +31,6 @@ app.use((req, res, next) => {
 });
 
 
-paypal.configure({
-  mode: 'sandbox',
-  client_id: 'YOUR_PAYPAL_CLIENT_ID',
-  client_secret: 'YOUR_PAYPAL_CLIENT_SECRET',
-});
-
 // Routes
 app.use('/api/paypal', paymentRoutes);
 
@@ -45,6 +39,7 @@ app.use('/api/courses', courseRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/enrollments', enrollmentRoutes);
 app.use('/api/user-info', userInfoRoutes);
+
 
 
 // Error handling middleware
