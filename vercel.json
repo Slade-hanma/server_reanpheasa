@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "routes": [
+    {
+      "src": "/api/courses",
+      "dest": "/api/courses.js"
+    },
+    {
+      "src": "/api/users",
+      "dest": "/api/users.js"
+    },
+    {
+      "src": "/api/enrollments",
+      "dest": "/api/enrollments.js"
+    },
+    {
+      "src": "/api/user-info",
+      "dest": "/api/user-info.js"
+    },
+    {
+      "src": "/api/paypal",
+      "dest": "/api/payment.js"
+    }
+  ]
+}
