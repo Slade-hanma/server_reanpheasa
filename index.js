@@ -11,6 +11,7 @@ const enrollmentRoutes = require('./routes/enrollmentRoute');
 const userInfoRoutes = require('./routes/userInfoRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 
+mongoose.set('strictQuery', false);
 
 const app = express();
 const cors = require('cors');
