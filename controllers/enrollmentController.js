@@ -80,11 +80,48 @@ const deleteEnrollment = async (req, res) => {
   }
 };
 
+const getMonthlyEnrollmentCounts = async (req, res) => {
+  try {
+    // Aggregation pipeline to group enrollments by year & month of createdAt and count them
+    const counts = await Enrollment.aggregate([
+      {
+        $group: {
+          _id: {
+            year: { $year: '$createdAt' },
+            month: { $month: '$createdAt' }
+          },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $sort: {
+          '_id.year': 1,
+          '_id.month': 1
+        }
+      }
+    ]);
+
+    // Format the output for easier frontend use
+    // Example: [{ year: 2023, month: 1, count: 12 }, ...]
+    const formattedCounts = counts.map(item => ({
+      year: item._id.year,
+      month: item._id.month,
+      count: item.count
+    }));
+
+    res.status(200).json(formattedCounts);
+  } catch (error) {
+    console.error('Error fetching monthly enrollment counts:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
 module.exports = {
   createEnrollment,
   getAllEnrollments,
   getEnrollmentsByUserId,
   getEnrollmentById,
   deleteEnrollment,
-  checkEnrollment
+  checkEnrollment,
+  getMonthlyEnrollmentCounts
 };

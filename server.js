@@ -10,6 +10,8 @@ const userRoutes = require('./routes/userRoute');
 const enrollmentRoutes = require('./routes/enrollmentRoute');
 const userInfoRoutes = require('./routes/userInfoRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
+const commentRoutes = require('./routes/commentRoute');
+const commentLikeRoutes = require('./routes/commentLikeRoute');
 
 
 const app = express();
@@ -39,6 +41,8 @@ app.use('/api/courses', courseRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/enrollments', enrollmentRoutes);
 app.use('/api/user-info', userInfoRoutes);
+app.use('/api/comments', commentRoutes);
+app.use('/api/comment-likes', commentLikeRoutes);
 
 
 

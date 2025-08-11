@@ -12,11 +12,16 @@ const {
   addModule,
   uploadVideoToModule,
   removeVideoFromModule,
+  getCourseCount
 } = require('../controllers/courseController');
 
+
+router.get('/count', getCourseCount);
+
+
 router.get('/', getCourses);
-router.get('/:id', getCourse);
 router.post('/', upload.any(), createCourse);
+router.get('/:id', getCourse);
 router.put('/:id', upload.any(), updateCourse);
 router.delete('/:id', deleteCourse);
 
@@ -32,5 +37,7 @@ router.delete(
   '/:courseId/modules/:moduleId/videos/:videoId',
   removeVideoFromModule
 );
+
+
 
 module.exports = router;

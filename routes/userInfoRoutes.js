@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const userInfoController = require('../controllers/UserInfoController');
+const userInfoController = require('../controllers/userInfoController');
 
 router.get('/', userInfoController.getAllUserInfo);  // GET /api/user-info/
 // Create new UserInfo (POST)

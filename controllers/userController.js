@@ -2,7 +2,10 @@ const User = require('../models/userModel');
 const fs = require('fs');
 const path = require('path');
 
-const jwt = require('jsonwebtoken')
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
+const cloudinary = require('../config/cloudinaryConfig');
+
 
 
 const createToken = (_id) => {
@@ -18,8 +21,12 @@ const loginUser = async (req, res) => {
 
     // create a token
     const token = createToken(user._id)
+const responseData = { email, token, role: user.role }
 
-    res.status(200).json({email, token})
+    console.log('Login response data:', responseData)
+
+    return res.status(200).json(responseData);
+
   } catch (error) {
     res.status(400).json({error: error.message})
   }
@@ -28,6 +35,7 @@ const loginUser = async (req, res) => {
 // signup a user
 const signupUser = async (req, res) => {
   const {firstName, lastName, dateOfBirth, sex, phoneNumber, city, country, email, password, role, image} = req.body
+     console.log('Role received in controller:', req.body.role);
 
   try {
     const user = await User.signup(firstName, lastName, dateOfBirth, sex, phoneNumber, city, country, email, password, role, image)
@@ -70,13 +78,30 @@ const getUser = async (req, res) => {
   }
 };
 
+
 // CREATE new user
 const createUser = async (req, res) => {
   try {
     const userData = req.body;
+
     if (req.file) {
-      userData.image = req.file.filename;
+      const uploadResult = await new Promise((resolve, reject) => {
+        cloudinary.uploader.upload_stream(
+          { folder: 'users' },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        ).end(req.file.buffer);
+      });
+      userData.image = uploadResult.secure_url;
     }
+
+    if (userData.password) {
+      const salt = await bcrypt.genSalt(10);
+      userData.password = await bcrypt.hash(userData.password, salt);
+    }
+
     const user = await User.create(userData);
     res.status(201).json(user);
   } catch (err) {
@@ -84,14 +109,26 @@ const createUser = async (req, res) => {
   }
 };
 
+
 // UPDATE user
 const updateUser = async (req, res) => {
   const { id } = req.params;
   try {
     const updates = req.body;
+
     if (req.file) {
-      updates.image = req.file.filename;
+      const uploadResult = await new Promise((resolve, reject) => {
+        cloudinary.uploader.upload_stream(
+          { folder: 'users' },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        ).end(req.file.buffer);
+      });
+      updates.image = uploadResult.secure_url;
     }
+
     const user = await User.findByIdAndUpdate(id, updates, { new: true });
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.status(200).json(user);
@@ -99,6 +136,7 @@ const updateUser = async (req, res) => {
     res.status(400).json({ error: err.message });
   }
 };
+
 
 // DELETE user
 const deleteUser = async (req, res) => {
@@ -121,13 +159,40 @@ const deleteUser = async (req, res) => {
   }
 };
 
+const getUserCount = async (req, res) => {
+  try {
+    console.log('Query:', req.query);
+
+    const role = req.query.role;
+    const filter = role ? { role } : {};
+    console.log('Filter used:', filter);
+
+    const count = await User.countDocuments(filter);
+    res.status(200).json({ totalUsers: count });
+  } catch (err) {
+    console.error('Error in getUserCount:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// const deleteNonAdminUsers = async (req, res) => {
+//   try {
+//     const result = await User.deleteMany({ role: { $ne: 'admin' } });
+//     res.status(200).json({ message: `${result.deletedCount} non-admin users deleted.` });
+//   } catch (error) {
+//     res.status(500).json({ error: error.message });
+//   }
+// };
+
 module.exports = {
   getUsers,
   getUser,
   createUser,
   updateUser,
   deleteUser,
-  signupUser, loginUser
+  signupUser, loginUser,
+  getUserCount,
+  // deleteNonAdminUsers
 };
 
 

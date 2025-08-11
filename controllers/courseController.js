@@ -1,8 +1,5 @@
 const Course = require('../models/courseModel');
 const mongoose = require('mongoose');
-const fs = require('fs');
-const path = require('path');
-const streamifier = require('streamifier');
 
 const cloudinary = require('../config/cloudinaryConfig');
 
@@ -30,25 +27,12 @@ const getCourse = async (req, res) => {
   }
 };
 
-const uploadToCloudinary = (fileBuffer, resourceType = 'video') => {
-  return new Promise((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(
-      { resource_type: resourceType },
-      (error, result) => {
-        if (error) reject(error);
-        else resolve(result);
-      }
-    );
-    streamifier.createReadStream(fileBuffer).pipe(stream);
-  });
-};
-
-
 const createCourse = async (req, res) => {
   try {
     const {
       name,
       price,
+      discount,
       level,
       lecturer,
       description,
@@ -147,6 +131,7 @@ const createCourse = async (req, res) => {
     const newCourse = await Course.create({
       name,
       price: parseFloat(price),
+      discount: parseFloat(discount),
       level,
       lecturer,
       description,
@@ -173,19 +158,43 @@ const deleteCourse = async (req, res) => {
     const course = await Course.findByIdAndDelete(id);
     if (!course) return res.status(404).json({ error: 'Course not found' });
 
-    // Delete video files from disk
-    course.modules.forEach(mod => {
-      mod.videos.forEach(video => {
-        const filepath = path.join(__dirname, '..', 'uploads', video.filename);
-        if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
-      });
-    });
+    // Optional: Delete course thumbnail from Cloudinary
+    if (course.image && typeof course.image === 'string' && course.image.trim() !== '') {
+      try {
+        const publicId = extractPublicIdFromUrl(course.image);
+        await cloudinary.uploader.destroy(publicId);
+      } catch (err) {
+        console.warn('Failed to delete image from Cloudinary:', err.message);
+      }
+    }
 
-    res.status(200).json(course);
+    // Optional: Delete all Cloudinary videos in modules
+    for (const mod of course.modules) {
+      for (const video of mod.videos) {
+        if (video.public_id) {
+          try {
+            await cloudinary.uploader.destroy(video.public_id, { resource_type: 'video' });
+          } catch (err) {
+            console.warn(`Failed to delete video ${video.name}:`, err.message);
+          }
+        }
+      }
+    }
+
+    res.status(200).json({ message: 'Course deleted' });
   } catch (error) {
+    console.error('Delete course error:', error);
     res.status(500).json({ error: error.message });
   }
 };
+
+// Helper to extract public_id from Cloudinary URL
+function extractPublicIdFromUrl(url) {
+  const parts = url.split('/');
+  const fileName = parts[parts.length - 1]; // e.g., abc123.mp4
+  return fileName.split('.')[0]; // remove file extension
+}
+
 
 const updateCourse = async (req, res) => {
   const { id } = req.params;
@@ -195,7 +204,7 @@ const updateCourse = async (req, res) => {
     const course = await Course.findById(id);
     if (!course) return res.status(404).json({ error: 'Course not found' });
 
-    // Parse requirements and modules safely
+    // Parse requirements from JSON string if needed
     let requirements = [];
     if (req.body.requirements) {
       try {
@@ -207,6 +216,7 @@ const updateCourse = async (req, res) => {
       }
     }
 
+    // Parse modules from JSON string if needed
     let modules = [];
     if (req.body.modules) {
       try {
@@ -218,40 +228,42 @@ const updateCourse = async (req, res) => {
       }
     }
 
-    // Attach uploaded files to corresponding videos in modules
+    // Attach uploaded files to corresponding videos
     if (req.files && req.files.length > 0) {
       req.files.forEach(file => {
-        if (file.fieldname === 'image') return; // skip course image here
+        if (file.fieldname === 'image') return; // skip image for now
 
         const match = file.fieldname.match(/^modules\[(\d+)\]\[videos\]\[(\d+)\]\[file\]$/);
         if (match) {
           const moduleIndex = parseInt(match[1], 10);
           const videoIndex = parseInt(match[2], 10);
-          if (modules[moduleIndex] && modules[moduleIndex].videos && modules[moduleIndex].videos[videoIndex]) {
-            modules[moduleIndex].videos[videoIndex].filename = file.filename;
-            modules[moduleIndex].videos[videoIndex].size = file.size;
-            modules[moduleIndex].videos[videoIndex].type = file.mimetype;
-            modules[moduleIndex].videos[videoIndex].createdAt = new Date();
-            modules[moduleIndex].videos[videoIndex].updatedAt = new Date();
+
+          if (modules[moduleIndex]?.videos?.[videoIndex]) {
+            modules[moduleIndex].videos[videoIndex] = {
+              ...modules[moduleIndex].videos[videoIndex],
+              name: file.originalname,
+              filename: file.filename,
+              size: file.size,
+              type: file.mimetype,
+              updatedAt: new Date(),
+              url: `/uploads/${file.filename}`,
+            };
           }
         }
       });
     }
 
-    // For videos missing filename (existing videos without new upload), preserve filename from existing course data
+    // Preserve existing video info for videos with URLs but no new files
     modules.forEach((mod, modIndex) => {
       mod.videos.forEach((video, vidIndex) => {
-        if (!video.filename) {
-          // Try to find existing filename from DB
+        if (!video.filename && video.url) {
           const existingVideo = course.modules?.[modIndex]?.videos?.[vidIndex];
-          if (existingVideo && existingVideo.filename) {
-            video.filename = existingVideo.filename;
-            video.size = existingVideo.size;
-            video.type = existingVideo.type;
-            video.createdAt = existingVideo.createdAt;
-            video.updatedAt = new Date();
-          } else {
-            // no filename at all — handle as error or default
+          if (existingVideo) {
+            mod.videos[vidIndex] = {
+              ...existingVideo.toObject(),
+              ...video,
+              updatedAt: new Date(),
+            };
           }
         }
       });
@@ -260,26 +272,40 @@ const updateCourse = async (req, res) => {
     // Update course fields
     course.name = req.body.name || course.name;
     course.price = req.body.price ? parseFloat(req.body.price) : course.price;
+    course.discount = req.body.discount ? parseFloat(req.body.discount) : course.discount;
     course.level = req.body.level || course.level;
     course.lecturer = req.body.lecturer || course.lecturer;
     course.description = req.body.description || course.description;
     course.requirements = requirements.length ? requirements : course.requirements;
     course.modules = modules.length ? modules : course.modules;
 
-    // Update course image if new uploaded
+    // Update course image if uploaded
     const imageFile = req.files.find(f => f.fieldname === 'image');
     if (imageFile) {
-      course.image = `/uploads/${imageFile.filename}`;
+      const uploadResult = await new Promise((resolve, reject) => {
+        cloudinary.uploader.upload_stream(
+          { resource_type: 'image' },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        ).end(imageFile.buffer);
+      });
+
+      course.image = uploadResult.secure_url;  // Store Cloudinary URL instead
     }
 
-    await course.save();
-    res.status(200).json(course);
 
+    await course.save();
+
+    res.status(200).json(course);
   } catch (error) {
     console.error('Update course error:', error);
     res.status(400).json({ error: error.message });
   }
 };
+
+
 
 
 // You can **keep** addModule if you want modules added separately later, otherwise you can remove it:
@@ -363,6 +389,17 @@ const removeVideoFromModule = async (req, res) => {
   }
 };
 
+const getCourseCount = async (req, res) => {
+  try {
+    const count = await Course.countDocuments({});
+    res.status(200).json({ totalCourses: count });
+  } catch (error) {
+    console.error('Error getting course count:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
 module.exports = {
   getCourses,
   getCourse,
@@ -372,4 +409,5 @@ module.exports = {
   addModule,
   uploadVideoToModule,
   removeVideoFromModule,
+  getCourseCount
 };

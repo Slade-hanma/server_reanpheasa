@@ -23,6 +23,7 @@ const moduleSchema = new Schema({
 const courseSchema = new Schema({
   name: { type: String, required: true },
   price: { type: Number, required: true },
+  discount: { type: Number, required: true },
   level: { type: String, required: true },
   lecturer: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   description: { type: String },
