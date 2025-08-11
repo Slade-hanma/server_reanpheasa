@@ -13,6 +13,7 @@ const paymentRoutes = require('./routes/paymentRoutes');
 const commentRoutes = require('./routes/commentRoute');
 const commentLikeRoutes = require('./routes/commentLikeRoute');
 
+mongoose.set('strictQuery', false);
 
 const app = express();
 const cors = require('cors');
