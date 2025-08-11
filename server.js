@@ -33,7 +33,9 @@ app.use((req, res, next) => {
   next();
 });
 
-
+app.get('/', (req, res) => {
+  res.send('API is running');
+});
 // Routes
 app.use('/api/paypal', paymentRoutes);
 
